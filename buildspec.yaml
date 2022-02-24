@@ -8,7 +8,7 @@ phases:
       - curl -sS -o kubectl https://amazon-eks.s3-us-west-2.amazonaws.com/1.14.6/2019-08-22/bin/linux/amd64/kubectl
       - chmod +x ./kubectl ./aws-iam-authenticator
       - export PATH=$PWD/:$PATH
-      - apt-get update && apt-get -y install jq python3-pip python3-dev && pip3 install --upgrade awscli
+      - yum update && yum -y install jq python3-pip python3-dev && pip3 install --upgrade awscli
   pre_build:
     commands:
       - echo Logging in to Amazon ECR...
@@ -17,12 +17,16 @@ phases:
       - REPOSITORY_URI=872521300165.dkr.ecr.ap-southeast-1.amazonaws.com/lampaws
       - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
       - IMAGE_TAG=${COMMIT_HASH:=latest}
+      - IMAGE_NAME=$(basename $REPOSITORY_URI)
+      - FULL_IMAGE_URI=$REPOSITORY_URI:$IMAGE_TAG
   build:
     commands:
       - echo Build started on `date`
       - echo Building the Docker image...          
       - docker build -t $REPOSITORY_URI:latest .
       - docker tag $REPOSITORY_URI:latest $REPOSITORY_URI:$IMAGE_TAG
+      - sed -i "/APP_NAME/$IMAGE_NAME" template.yaml
+      - sed -i "/DOCKER_IMAGE_TAG/$FULL_IMAGE_URI" template.yaml
   post_build:
     commands:
       - echo Build completed on `date`
@@ -31,5 +35,7 @@ phases:
       - docker push $REPOSITORY_URI:$IMAGE_TAG
       - echo Writing image definitions file...
       - printf '[{"name”:"__ECS_CONTAINER_NAME__","imageUri":"%s"}]' $REPOSITORY_URI:$IMAGE_TAG > imagedefinitions.json
+      - echo "deploy to kubernetes..."
+      - kubectl apply -f template.yaml
 artifacts:
   files: imagedefinitions.json
